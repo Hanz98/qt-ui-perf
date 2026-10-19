@@ -1,0 +1,40 @@
+# The Python side as an installable package: tools/*.py become the `qtuiperf` package
+# (tools/perfdrive.py -> qtuiperf.perfdrive) with console scripts. No runtime dependencies,
+# so it also stays usable as plain files: `python3 tools/perfdrive.py` keeps working.
+#
+#     pip install git+https://github.com/Hanz98/qt-ui-perf.git@develop
+#     perfdrive --app ./MyApp --scenario scenarios/my_app.json --lane headless --out results/x.json
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qtuiperf"
+version = "0.1.0"
+description = "In-process UI performance testing of Qt applications on CI agents without a desktop"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Jan Filip"}]
+requires-python = ">=3.8"
+dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.urls]
+Homepage = "https://github.com/Hanz98/qt-ui-perf"
+
+[project.scripts]
+perfdrive = "qtuiperf.perfdrive:main"
+# compare = "qtuiperf.compare:main"      # add when tools/compare.py lands
+
+[tool.setuptools]
+# Every module in tools/ is shipped as qtuiperf.<module>; nothing else is packaged.
+packages = ["qtuiperf"]
+
+[tool.setuptools.package-dir]
+qtuiperf = "tools"
