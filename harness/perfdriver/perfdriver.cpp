@@ -34,6 +34,9 @@
 #include <vector>
 
 #ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX   // windows.h's min/max macros break std::min / std::max below
+#endif
 #include <windows.h>
 #else
 #include <unistd.h>
