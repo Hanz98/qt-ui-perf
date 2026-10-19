@@ -52,6 +52,11 @@ machines and the numbers in the uploaded `results/*.json` artifacts are only goo
 spotting that something broke by an order of magnitude. Real measurements belong on the
 dedicated Jenkins agents described in `docs/agents.md`.
 
+## Roadmap
+
+What is planned and in which order: [`docs/roadmap.md`](docs/roadmap.md). Each item is a
+GitHub issue; pick one, comment on it, branch from `develop`.
+
 ## Conventions
 
 - Python: standard library only in `tools/` (it runs on bare Jenkins agents). 3.8+.
