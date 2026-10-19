@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+# QtUiPerf was built against this Qt; the exported target links Qt@QT_VERSION_MAJOR@::<component>
+# targets, so the same Qt major has to be found in the consuming project.
+set(QtUiPerf_QT_MAJOR @QT_VERSION_MAJOR@)
+set(QtUiPerf_QT_COMPONENTS @PERFDRIVER_QT_COMPONENTS@)
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt${QtUiPerf_QT_MAJOR} COMPONENTS ${QtUiPerf_QT_COMPONENTS})
+
+include("${CMAKE_CURRENT_LIST_DIR}/QtUiPerfTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/QtUiPerfHelpers.cmake")
+
+check_required_components(QtUiPerf)
