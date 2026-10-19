@@ -1,5 +1,7 @@
 # qt-ui-perf — UI performance testing of a Qt application on Jenkins
 
+[![ci](https://github.com/Hanz98/qt-ui-perf/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Hanz98/qt-ui-perf/actions/workflows/ci.yml)
+
 Measure the UI performance of a Qt application from *inside the process*, so the tests run
 on CI agents that sit at a locked screen or have no desktop at all. MIT licensed.
 
