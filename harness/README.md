@@ -2,14 +2,22 @@
 
 ## perfdriver/ (the automation seam) — implemented
 
-A static library (`perfdriver`) linked into the real application. Two calls in `main()`:
+A static library (CMake package `QtUiPerf`, target `QtUiPerf::perfdriver`) linked into the
+real application with `qtuiperf_instrument(<target>)`, which also defines `QTUIPERF_ENABLED`.
+Two calls in `main()`:
 
 ```cpp
-PerfDriver::markProcessStart();        // first line of main(): starts the startup clock
-QApplication app(argc, argv);
-PerfDriver::installIfRequested(app);   // no-op unless --perf-driver or QT_PERF_DRIVER is set
+#ifdef QTUIPERF_ENABLED
+    PerfDriver::markProcessStart();        // first line of main(): starts the startup clock
+#endif
+    QApplication app(argc, argv);
+#ifdef QTUIPERF_ENABLED
+    PerfDriver::installIfRequested(app);   // no-op unless --perf-driver or QT_PERF_DRIVER is set
+#endif
 ```
 
+How to get the package (add_subdirectory / FetchContent / find_package) and the objectName
+conventions: [`docs/integration.md`](../docs/integration.md).
 `sample-app/testing-changes.diff` shows the complete set of changes this needs in an app.
 
 ### Transport

@@ -28,6 +28,7 @@ git switch -c feature/qt-quick-seam
 # … work, commit in small steps …
 python3 -m unittest discover -s tests          # driver + scenario tests, no Qt needed
 tests/smoke.sh                                 # builds the sample app, plays the scenario
+cmake -S . -B build && cmake --build build && ctest --test-dir build   # same through the root project
 git push -u origin feature/qt-quick-seam
 gh pr create --base develop --fill             # or the GitHub UI
 ```
@@ -54,8 +55,17 @@ dedicated Jenkins agents described in `docs/agents.md`.
 
 ## Conventions
 
-- Python: standard library only in `tools/` (it runs on bare Jenkins agents). 3.8+.
-- C++: C++17, Qt 5.15 and Qt 6 both supported, no extra Qt modules in the seam.
+- Python: standard library only in `tools/` (it runs on bare Jenkins agents). 3.8+. The
+  directory is also the installable package `qtuiperf` (`pyproject.toml`): a new
+  `tools/<name>.py` is `qtuiperf.<name>` automatically; give it a `main()` returning an exit
+  code and add a `[project.scripts]` line if it is a command.
+- C++: C++17, Qt 5.15 and Qt 6 both supported, no extra Qt modules in the seam by default.
+  `harness/perfdriver/CMakeLists.txt` is a package other projects consume
+  (`find_package(QtUiPerf)`): keep the exported target, the helper function and the config
+  template in step, and bump the version in `project()`, `pyproject.toml` and `CHANGELOG.md`
+  together.
+- Scenario format changes go into `scenarios/schema.json` and `tools/perfdrive.py` together;
+  `tests/test_scenarios.py` checks the two list the same ops.
 - Changes the sample app needs for testability go into `sample-app/testing-changes.diff`
   as well, so the diff stays a complete recipe for instrumenting a real app.
 - Commit messages: imperative subject line, a body explaining *why* when it is not obvious.
