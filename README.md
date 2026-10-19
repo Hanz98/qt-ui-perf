@@ -12,7 +12,8 @@ on CI agents that sit at a locked screen or have no desktop at all. MIT licensed
 | `sample-app/` — small Qt Widgets app instrumented with the seam (`testing-changes.diff` shows exactly what was added) | working |
 | `scenarios/sample_app.json` — startup, click-to-paint, key/wheel latency, jank, RSS | working |
 | `tests/` + GitHub Actions — driver tests without Qt, build-and-play smoke on Linux Qt 5/6 and Windows Qt 6 | working |
-| `tools/compare.py` (baseline + thresholds → junit), `tools/preflight.py` | not written |
+| `tools/compare.py` — baseline store, thresholds, noise band → exit code, JUnit, Markdown, JSON ([`docs/compare.md`](docs/compare.md)) | working |
+| `tools/preflight.py` | not written |
 | Qt Quick support in the seam | not started |
 | `ci/Jenkinsfile` | sketch, see §4 step 7 |
 | Display-lane agent setup scripts | not written; facts in `docs/agents.md` |
@@ -169,6 +170,8 @@ Details and commands in [`docs/agents.md`](docs/agents.md). Summary:
 - Compare to a **baseline** (last green result of the main branch for the same OS × lane ×
   scenario), with a relative threshold: > +10 % → UNSTABLE, > +25 % → FAIL, after
   confirming with one re-run. Thresholds per metric, tuned once we see the real noise.
+  Implemented in `tools/compare.py`, which also learns a noise band from the last 20 green
+  runs so a wobbly metric does not cry wolf — see [`docs/compare.md`](docs/compare.md).
 - Keep every raw JSON as a build artifact; push summaries to a time series (Jenkins Plot /
   Benchmark plugin to start, InfluxDB + Grafana if trends matter).
 
@@ -187,14 +190,15 @@ qt-ui-perf/
 ├── README.md            this file
 ├── CONTRIBUTING.md      branch model (master / develop / feature PRs), what CI runs
 ├── docs/
-│   └── agents.md        Linux / Windows agent setup, the locked-session details
+│   ├── agents.md        Linux / Windows agent setup, the locked-session details
+│   └── compare.md       the regression gate: thresholds, baseline store, noise band
 ├── harness/             perfdriver/ (C++ seam compiled into the app, CMake)
 │                        qbench/     (QtTest micro-benchmarks, optional, not started)
 ├── sample-app/          instrumented Qt Widgets demo + testing-changes.diff
 ├── scenarios/           *.json scenario scripts
 ├── tools/
 │   ├── perfdrive.py     launches the app, runs a scenario, writes results JSON
-│   ├── compare.py       baseline comparison, thresholds, junit output   (not written)
+│   ├── compare.py       baseline comparison, thresholds, noise band, junit (docs/compare.md)
 │   └── report.py        markdown/HTML summary for the build page        (not written)
 ├── tests/
 │   ├── fake_app.py      speaks the perfdriver protocol without Qt
