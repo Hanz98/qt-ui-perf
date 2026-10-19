@@ -1,0 +1,94 @@
+# Pull-request checks. Every PR into develop or master must pass all three jobs
+# (branch protection requires the "ci" status). Nothing here measures performance for real:
+# GitHub runners are shared, noisy machines. The jobs only prove the tooling still works.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [develop, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Driver + scenario tests against tests/fake_app.py. No Qt, seconds to run.
+  python:
+    name: python tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m unittest discover -s tests -v
+      - name: lint (syntax + unused names only)
+        run: |
+          python3 -m pip install --quiet pyflakes
+          python3 -m pyflakes tools tests
+
+  # Build the sample app with the perfdriver seam and play the real scenario headless.
+  smoke-linux:
+    name: smoke / linux / Qt ${{ matrix.qt }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: 6
+            packages: qt6-base-dev
+          - qt: 5
+            packages: qtbase5-dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: install Qt ${{ matrix.qt }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build ${{ matrix.packages }}
+      - name: build + run scenario (headless lane)
+        env:
+          QT_MAJOR: ${{ matrix.qt }}
+          REPEATS: 3
+          OUT: results/linux-qt${{ matrix.qt }}-headless.json
+        run: tests/smoke.sh build -G Ninja
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-linux-qt${{ matrix.qt }}
+          path: results/*.json
+
+  # Same on Windows: proves the stdin/stdout transport and the offscreen plugin work there.
+  smoke-windows:
+    name: smoke / windows / Qt 6
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          cache: true
+      - name: build + run scenario (headless lane)
+        shell: bash
+        env:
+          QT_MAJOR: 6
+          REPEATS: 3
+          OUT: results/windows-qt6-headless.json
+        run: tests/smoke.sh build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-windows-qt6
+          path: results/*.json
+
+  # Single required status for branch protection; stays green only if every job above did.
+  ci:
+    name: ci
+    if: always()
+    needs: [python, smoke-linux, smoke-windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo all checks passed

@@ -1,0 +1,92 @@
+--- a/sample-app/CMakeLists.txt
++++ b/sample-app/CMakeLists.txt
+@@ -15,6 +15,15 @@
+ )
+ target_link_libraries(SampleApp PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+ 
++# UI performance testing: compile in the dormant automation seam (harness/perfdriver).
++# It only activates when the app is started with --perf-driver; see harness/README.md.
++option(SAMPLEAPP_PERF_DRIVER "Compile in the perf driver seam (dormant unless --perf-driver)" ON)
++if(SAMPLEAPP_PERF_DRIVER)
++    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../harness/perfdriver perfdriver)
++    target_link_libraries(SampleApp PRIVATE perfdriver)
++    target_compile_definitions(SampleApp PRIVATE SAMPLEAPP_PERF_DRIVER)
++endif()
++
+ if(WIN32)
+     set_target_properties(SampleApp PROPERTIES WIN32_EXECUTABLE ON)
+ endif()
+--- a/sample-app/main.cpp
++++ b/sample-app/main.cpp
+@@ -2,9 +2,19 @@
+ 
+ #include <QApplication>
+ 
++#ifdef SAMPLEAPP_PERF_DRIVER
++#include <perfdriver.h>
++#endif
++
+ int main(int argc, char *argv[])
+ {
++#ifdef SAMPLEAPP_PERF_DRIVER
++    PerfDriver::markProcessStart();   // startup is measured from here
++#endif
+     QApplication app(argc, argv);
++#ifdef SAMPLEAPP_PERF_DRIVER
++    PerfDriver::installIfRequested(app);   // no-op without --perf-driver
++#endif
+     MainWindow window;
+     window.show();
+     return app.exec();
+--- a/sample-app/mainwindow.cpp
++++ b/sample-app/mainwindow.cpp
+@@ -28,6 +28,8 @@
+     : QMainWindow(parent)
+ {
+     setWindowTitle(tr("Sample App"));
++    // Object names are the addresses the UI performance scenarios use (scenarios/*.json).
++    setObjectName(QStringLiteral("mainWindow"));
+ 
+     auto *central = new QWidget(this);
+     auto *layout = new QVBoxLayout(central);
+@@ -42,9 +44,11 @@
+     layout->addWidget(title);
+ 
+     m_valueLabel = new QLabel(central);
++    m_valueLabel->setObjectName(QStringLiteral("valueLabel"));
+     layout->addWidget(m_valueLabel);
+ 
+     m_slider = new QSlider(Qt::Horizontal, central);
++    m_slider->setObjectName(QStringLiteral("levelSlider"));
+     m_slider->setRange(0, 100);
+     m_slider->setValue(kDefaultLevel);
+     m_slider->setTickPosition(QSlider::TicksBelow);
+@@ -52,6 +56,7 @@
+     layout->addWidget(m_slider);
+ 
+     m_moodLabel = new QLabel(central);
++    m_moodLabel->setObjectName(QStringLiteral("moodLabel"));
+     m_moodLabel->setAlignment(Qt::AlignCenter);
+     QFont moodFont = m_moodLabel->font();
+     moodFont.setPointSize(moodFont.pointSize() + 10);
+@@ -61,16 +66,20 @@
+     auto *buttons = new QHBoxLayout;
+     m_countButton = new QPushButton(tr("Count"), central);
+     m_resetButton = new QPushButton(tr("Reset"), central);
++    m_countButton->setObjectName(QStringLiteral("countButton"));
++    m_resetButton->setObjectName(QStringLiteral("resetButton"));
+     buttons->addWidget(m_countButton);
+     buttons->addWidget(m_resetButton);
+     layout->addLayout(buttons);
+ 
+     m_clicksLabel = new QLabel(central);
++    m_clicksLabel->setObjectName(QStringLiteral("clicksLabel"));
+     layout->addWidget(m_clicksLabel);
+ 
+     layout->addStretch();
+ 
+     m_statusLabel = new QLabel(tr("Ready."), central);
++    m_statusLabel->setObjectName(QStringLiteral("statusLabel"));
+     m_statusLabel->setStyleSheet(QStringLiteral("color: gray;"));
+     layout->addWidget(m_statusLabel);
+ 

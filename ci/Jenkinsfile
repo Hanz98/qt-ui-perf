@@ -1,0 +1,90 @@
+// Sketch of the pipeline shape described in README.md §4 step 7. Not runnable yet:
+// the app checkout/build step and tools/*.py are placeholders.
+pipeline {
+    agent none
+    options {
+        disableConcurrentBuilds()          // perf agents must never share a run
+        buildDiscarder(logRotator(numToKeepStr: '200'))
+        timestamps()
+    }
+    parameters {
+        string(name: 'SCENARIOS', defaultValue: 'startup,open_main_view,scroll_list',
+               description: 'comma-separated scenario names from scenarios/')
+        string(name: 'REPEATS', defaultValue: '7', description: 'repetitions after the warm-up run')
+        booleanParam(name: 'UPDATE_BASELINE', defaultValue: false,
+               description: 'store this run as the new baseline (main branch only)')
+    }
+    stages {
+        stage('perf') {
+            matrix {
+                axes {
+                    axis { name 'OS';   values 'linux', 'windows' }
+                    axis { name 'LANE'; values 'headless', 'display' }
+                }
+                // The display lane only exists where a prepared agent exists.
+                // Keep it nightly: `when { triggeredBy 'TimerTrigger' }` once agents are ready.
+                agent { label "perf-${LANE}-${OS}" }
+                stages {
+                    stage('fetch app') {
+                        steps {
+                            // copyArtifacts from the app's own build job, or build it here
+                            echo "fetch app build for ${OS}"
+                        }
+                    }
+                    stage('preflight') {
+                        when { expression { LANE == 'display' } }
+                        steps {
+                            // fail fast if the desktop is not usable (docs/agents.md)
+                            script {
+                                if (isUnix()) sh 'python3 tools/preflight.py --lane display'
+                                else          bat 'py -3 tools\\preflight.py --lane display'
+                            }
+                        }
+                    }
+                    stage('measure') {
+                        steps {
+                            script {
+                                def cmd = "tools/perfdrive.py --lane ${LANE} --scenarios ${params.SCENARIOS} " +
+                                          "--repeats ${params.REPEATS} --out results/${OS}-${LANE}.json"
+                                if (isUnix()) sh "python3 ${cmd}"
+                                else          bat "py -3 ${cmd.replace('/', '\\\\')}"
+                            }
+                        }
+                        post {
+                            always { archiveArtifacts artifacts: 'results/*.json', fingerprint: true }
+                        }
+                    }
+                    stage('compare') {
+                        steps {
+                            script {
+                                // Baseline = last stored result for main × OS × LANE.
+                                // Exit code 0 ok, 1 unstable (>10 %), 2 fail (>25 %); writes junit XML.
+                                def cmd = "tools/compare.py results/${OS}-${LANE}.json " +
+                                          "--baseline baselines/${OS}-${LANE}.json " +
+                                          "--junit results/${OS}-${LANE}-junit.xml"
+                                def rc = isUnix() ? sh(returnStatus: true, script: "python3 ${cmd}")
+                                                  : bat(returnStatus: true, script: "py -3 ${cmd.replace('/', '\\\\')}")
+                                if (rc == 1) unstable("perf regression > 10 % on ${OS}/${LANE}")
+                                if (rc >= 2) error("perf regression > 25 % on ${OS}/${LANE}")
+                            }
+                            junit 'results/*-junit.xml'
+                        }
+                    }
+                    stage('baseline') {
+                        when {
+                            allOf {
+                                branch 'main'
+                                expression { params.UPDATE_BASELINE || currentBuild.currentResult == 'SUCCESS' }
+                            }
+                        }
+                        steps {
+                            // Promote: copy results to the baseline store (artifact of this job,
+                            // a shared drive, or an object store). Keep history for trend charts.
+                            echo "store baselines/${OS}-${LANE}.json"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
