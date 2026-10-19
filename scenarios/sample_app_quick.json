@@ -1,0 +1,39 @@
+{
+  "name": "sample_app_quick",
+  "description": "The Qt Quick twin of sample_app: start sample-app-quick, click Count, move the slider with keys and wheel, reset. A Qt Quick Controls Slider moves one stepSize per key press and per wheel notch (QSlider moves three per notch), hence the different wheel count.",
+  "app_args": [],
+  "env": {
+    "QT_QUICK_BACKEND": "software"
+  },
+  "steps": [
+    {"op": "launch"},
+    {"op": "wait_first_frame", "mark": "startup_to_first_paint_ms"},
+    {"op": "wait_idle", "ms": 200},
+    {"op": "stats", "reset": true, "mark": "startup_jank"},
+    {"op": "mark", "name": "rss_after_start_mib", "metric": "rss"},
+
+    {"op": "click", "object": "countButton", "mark": "count_click_to_paint_ms"},
+    {"op": "get", "object": "clicksLabel", "property": "text", "expect": "Clicks: 1"},
+
+    {"op": "key", "object": "levelSlider", "keys": ["Right"], "times": 20, "mark": "slider_key_to_paint_ms"},
+    {"op": "get", "object": "valueLabel", "property": "text", "expect": "Level: 70 %"},
+    {"op": "get", "object": "moodLabel", "property": "text", "expect": "Loud"},
+
+    {"op": "wheel", "object": "levelSlider", "delta": -120, "times": 30, "mark": "slider_wheel_to_paint_ms"},
+    {"op": "get", "object": "valueLabel", "property": "text", "expect": "Level: 40 %"},
+
+    {"op": "click", "object": "resetButton", "mark": "reset_click_to_paint_ms"},
+    {"op": "get", "object": "valueLabel", "property": "text", "expect": "Level: 50 %"},
+    {"op": "get", "object": "statusLabel", "property": "text", "expect": "Everything reset."},
+
+    {"op": "stats", "mark": "jank"},
+    {"op": "mark", "name": "rss_after_scenario_mib", "metric": "rss"},
+    {"op": "quit"}
+  ],
+  "thresholds": {
+    "startup_to_first_paint_ms": {"unstable_pct": 10, "fail_pct": 25},
+    "count_click_to_paint_ms":   {"unstable_pct": 10, "fail_pct": 25},
+    "slider_key_to_paint_ms.p95": {"unstable_pct": 15, "fail_pct": 40},
+    "rss_after_scenario_mib":    {"unstable_pct": 5,  "fail_pct": 15}
+  }
+}
