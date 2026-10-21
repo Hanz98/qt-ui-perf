@@ -1,4 +1,5 @@
 {
+  "$schema": "./schema.json",
   "name": "sample_app",
   "description": "Start the sample app, click Count, move the slider with keys and wheel, reset. Checks the labels so a timing is only recorded when the interaction took effect.",
   "app_args": [],

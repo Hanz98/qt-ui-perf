@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Hanz98/qt-ui-perf/scenarios/schema.json",
+  "title": "qt-ui-perf scenario",
+  "description": "A scenario tools/perfdrive.py plays against an application built with harness/perfdriver. Steps run in order; the first must be launch and the last quit. A step with a mark records a metric under that name (key/wheel also record <mark>.p95 and <mark>.max; wait_first_frame also records <mark>.wall; stats records <mark>.p95, <mark>.max and <mark>.over_50ms).",
+  "type": "object",
+  "required": ["name", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "name": {
+      "type": "string",
+      "description": "Scenario name, written into the results JSON and used by baseline comparison."
+    },
+    "description": {"type": "string"},
+    "app_args": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Extra command-line arguments for the application (after --perf-driver)."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "description": "Environment variables set for the application, on top of the lane's."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/definitions/step"}
+    },
+    "thresholds": {
+      "type": "object",
+      "description": "Per metric: relative regression against the baseline that marks the build UNSTABLE / FAILED (tools/compare.py). Keys must be metric names the scenario records.",
+      "additionalProperties": {"$ref": "#/definitions/threshold"}
+    }
+  },
+  "definitions": {
+    "threshold": {
+      "type": "object",
+      "properties": {
+        "unstable_pct": {"type": "number", "minimum": 0},
+        "fail_pct": {"type": "number", "minimum": 0}
+      }
+    },
+    "objectName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "objectName of the widget, optionally a path parent/child."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How long the seam waits for the repaint after the input (default 1000)."
+    },
+    "step": {
+      "type": "object",
+      "required": ["op"],
+      "oneOf": [
+        {"$ref": "#/definitions/launch"},
+        {"$ref": "#/definitions/wait_first_frame"},
+        {"$ref": "#/definitions/wait_idle"},
+        {"$ref": "#/definitions/click"},
+        {"$ref": "#/definitions/key"},
+        {"$ref": "#/definitions/wheel"},
+        {"$ref": "#/definitions/get"},
+        {"$ref": "#/definitions/mark"},
+        {"$ref": "#/definitions/stats"},
+        {"$ref": "#/definitions/quit"}
+      ]
+    },
+    "launch": {
+      "description": "Start the application with --perf-driver and wait for its ready event. Must be the first step.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"op": {"const": "launch"}}
+    },
+    "wait_first_frame": {
+      "description": "Wait for the first widget paint. mark records first_paint_ms (in-process clock) and <mark>.wall (driver clock since launch).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "wait_first_frame"},
+        "mark": {"type": "string"},
+        "timeout_s": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "wait_idle": {
+      "description": "Wait until ms milliseconds pass without paint/update events (default 300).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "wait_idle"},
+        "ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "click": {
+      "description": "Synthetic press+release at the widget's centre; mark records click-to-paint ms.",
+      "type": "object",
+      "required": ["object"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "click"},
+        "object": {"$ref": "#/definitions/objectName"},
+        "mark": {"type": "string"},
+        "timeout_ms": {"$ref": "#/definitions/timeout_ms"}
+      }
+    },
+    "key": {
+      "description": "Focus the widget and send key press/release pairs, times times; mark records the median key-to-paint ms plus .p95 and .max.",
+      "type": "object",
+      "required": ["object"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "key"},
+        "object": {"$ref": "#/definitions/objectName"},
+        "keys": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "QKeySequence portable names, e.g. \"Right\", \"Ctrl+A\", \"Return\"."
+        },
+        "text": {"type": "string", "description": "Text typed as key events with this text (typing latency)."},
+        "times": {"type": "integer", "minimum": 1},
+        "mark": {"type": "string"},
+        "timeout_ms": {"$ref": "#/definitions/timeout_ms"}
+      }
+    },
+    "wheel": {
+      "description": "One synthetic wheel event, times times; mark records the median wheel-to-paint ms plus .p95 and .max.",
+      "type": "object",
+      "required": ["object"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "wheel"},
+        "object": {"$ref": "#/definitions/objectName"},
+        "delta": {"type": "number", "description": "Wheel delta in eighths of a degree; -120 is one notch down (default)."},
+        "axis": {"type": "string", "enum": ["x", "y"]},
+        "times": {"type": "integer", "minimum": 1},
+        "mark": {"type": "string"},
+        "timeout_ms": {"$ref": "#/definitions/timeout_ms"}
+      }
+    },
+    "get": {
+      "description": "Read a Qt property (default text). With expect, the run fails unless the value equals it: this is how a scenario proves an interaction took effect.",
+      "type": "object",
+      "required": ["object"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "get"},
+        "object": {"$ref": "#/definitions/objectName"},
+        "property": {"type": "string", "minLength": 1},
+        "expect": {}
+      }
+    },
+    "mark": {
+      "description": "Record a value under name: the in-process timestamp (metric time, ms since process start) or the application's resident set size (metric rss, MiB).",
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "mark"},
+        "name": {"type": "string", "minLength": 1},
+        "metric": {"type": "string", "enum": ["time", "rss"]}
+      }
+    },
+    "stats": {
+      "description": "Read the jank meter; records <mark>.p95, <mark>.max and <mark>.over_50ms (mark defaults to jank). reset clears the counters afterwards.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "op": {"const": "stats"},
+        "mark": {"type": "string"},
+        "reset": {"type": "boolean"}
+      }
+    },
+    "quit": {
+      "description": "Ask the application to quit and wait for it; a non-zero exit code fails the run. Must be the last step.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"op": {"const": "quit"}}
+    }
+  }
+}

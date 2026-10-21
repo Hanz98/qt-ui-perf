@@ -1,16 +1,18 @@
 --- a/sample-app/CMakeLists.txt
 +++ b/sample-app/CMakeLists.txt
-@@ -15,6 +15,15 @@
+@@ -22,6 +22,17 @@
  )
  target_link_libraries(SampleApp PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
  
-+# UI performance testing: compile in the dormant automation seam (harness/perfdriver).
-+# It only activates when the app is started with --perf-driver; see harness/README.md.
++# UI performance testing: compile in the dormant automation seam (qt-ui-perf, harness/perfdriver).
++# It only activates when the app is started with --perf-driver; see docs/integration.md.
++# qtuiperf_instrument() links QtUiPerf::perfdriver and defines QTUIPERF_ENABLED for main.cpp.
 +option(SAMPLEAPP_PERF_DRIVER "Compile in the perf driver seam (dormant unless --perf-driver)" ON)
 +if(SAMPLEAPP_PERF_DRIVER)
-+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../harness/perfdriver perfdriver)
-+    target_link_libraries(SampleApp PRIVATE perfdriver)
-+    target_compile_definitions(SampleApp PRIVATE SAMPLEAPP_PERF_DRIVER)
++    if(NOT TARGET QtUiPerf::perfdriver)   # already there when built from the repository root
++        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../harness/perfdriver perfdriver)
++    endif()
++    qtuiperf_instrument(SampleApp)
 +endif()
 +
  if(WIN32)
@@ -22,17 +24,17 @@
  
  #include <QApplication>
  
-+#ifdef SAMPLEAPP_PERF_DRIVER
++#ifdef QTUIPERF_ENABLED
 +#include <perfdriver.h>
 +#endif
 +
  int main(int argc, char *argv[])
  {
-+#ifdef SAMPLEAPP_PERF_DRIVER
++#ifdef QTUIPERF_ENABLED
 +    PerfDriver::markProcessStart();   // startup is measured from here
 +#endif
      QApplication app(argc, argv);
-+#ifdef SAMPLEAPP_PERF_DRIVER
++#ifdef QTUIPERF_ENABLED
 +    PerfDriver::installIfRequested(app);   // no-op without --perf-driver
 +#endif
      MainWindow window;

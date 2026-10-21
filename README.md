@@ -8,10 +8,12 @@ on CI agents that sit at a locked screen or have no desktop at all. MIT licensed
 | Piece | State |
 |---|---|
 | `harness/perfdriver/` — the in-process automation seam (C++, Qt Widgets, Qt 5.15 / Qt 6) | working |
+| CMake package `QtUiPerf` (`QtUiPerf::perfdriver`, `qtuiperf_instrument()`; add_subdirectory / FetchContent / find_package) | working, see [`docs/integration.md`](docs/integration.md) |
 | `tools/perfdrive.py` — launches the app, plays a scenario, writes results JSON | working, headless + display lanes |
+| Python package `qtuiperf` (`pip install`, console script `perfdrive`) | working |
 | `sample-app/` — small Qt Widgets app instrumented with the seam (`testing-changes.diff` shows exactly what was added) | working |
-| `scenarios/sample_app.json` — startup, click-to-paint, key/wheel latency, jank, RSS | working |
-| `tests/` + GitHub Actions — driver tests without Qt, build-and-play smoke on Linux Qt 5/6 and Windows Qt 6 | working |
+| `scenarios/sample_app.json` — startup, click-to-paint, key/wheel latency, jank, RSS; `scenarios/schema.json` describes the format | working |
+| `tests/` + GitHub Actions — driver tests without Qt, build-and-play smoke on Linux Qt 5/6 and Windows Qt 6; root CMake + CTest `sample_app_scenario` | working |
 | `tools/compare.py` (baseline + thresholds → junit), `tools/preflight.py` | not written |
 | Qt Quick support in the seam | not started |
 | `ci/Jenkinsfile` | sketch, see §4 step 7 |
@@ -21,20 +23,34 @@ on CI agents that sit at a locked screen or have no desktop at all. MIT licensed
 
 ```sh
 # needs cmake, a C++17 compiler, Qt 5.15+ or Qt 6 (Widgets), Python 3.8+
-tests/smoke.sh                       # builds sample-app/ and plays the scenario headless
-python3 -m unittest discover -s tests   # driver and scenario tests, no Qt required
+cmake -S . -B build [-DPERFDRIVER_QT_MAJOR=5]   # seam + sample app (Qt 6 preferred when both exist)
+cmake --build build
+ctest --test-dir build --output-on-failure     # plays scenarios/sample_app.json headless
+python3 -m unittest discover -s tests          # driver and scenario tests, no Qt required
+tests/smoke.sh                                 # what CI runs: builds sample-app/ standalone + plays
 
-# the same by hand
-cmake -S sample-app -B sample-app/build -DSAMPLEAPP_PERF_DRIVER=ON
-cmake --build sample-app/build
-python3 tools/perfdrive.py --app sample-app/build/SampleApp \
+# a measurement run by hand
+python3 tools/perfdrive.py --app build/sample-app/SampleApp \
     --scenario scenarios/sample_app.json --lane headless --repeats 5 --out results/local.json
 ```
 
-Instrumenting your own application takes two calls in `main()` and `objectName`s on the
-widgets you want to drive — see [`harness/README.md`](harness/README.md) and
+Using it in your own application is one CMake line, two guarded calls in `main()` and
+`objectName`s on the widgets you want to drive:
+
+```cmake
+find_package(QtUiPerf CONFIG REQUIRED)   # or add_subdirectory(.../harness/perfdriver) / FetchContent
+qtuiperf_instrument(MyApp)               # links QtUiPerf::perfdriver, defines QTUIPERF_ENABLED
+```
+
+```sh
+pip install git+https://github.com/Hanz98/qt-ui-perf.git   # the driver: `perfdrive --help`
+```
+
+Details in [`docs/integration.md`](docs/integration.md); the protocol and commands in
+[`harness/README.md`](harness/README.md); the complete app-side patch for the sample app in
 [`sample-app/testing-changes.diff`](sample-app/testing-changes.diff). How to contribute,
-branch model and what CI checks: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+branch model and what CI checks: [`CONTRIBUTING.md`](CONTRIBUTING.md). Changes per version:
+[`CHANGELOG.md`](CHANGELOG.md).
 
 The rest of this file is the plan the work follows, the decisions it rests on, and the
 questions that still need answers from the stakeholders.
@@ -186,12 +202,17 @@ Sketch in [`ci/Jenkinsfile`](ci/Jenkinsfile): a declarative pipeline with a `mat
 qt-ui-perf/
 ├── README.md            this file
 ├── CONTRIBUTING.md      branch model (master / develop / feature PRs), what CI runs
+├── CHANGELOG.md
+├── CMakeLists.txt       root build: seam + sample app + CTest test sample_app_scenario
+├── pyproject.toml       tools/ as the pip package qtuiperf (console script perfdrive)
 ├── docs/
+│   ├── integration.md   using the seam and the driver in your own application
 │   └── agents.md        Linux / Windows agent setup, the locked-session details
-├── harness/             perfdriver/ (C++ seam compiled into the app, CMake)
+├── harness/             perfdriver/ (C++ seam, CMake package QtUiPerf: target, config, helper)
 │                        qbench/     (QtTest micro-benchmarks, optional, not started)
+├── examples/            fetchcontent/ — minimal consumer via FetchContent
 ├── sample-app/          instrumented Qt Widgets demo + testing-changes.diff
-├── scenarios/           *.json scenario scripts
+├── scenarios/           *.json scenario scripts, schema.json describes them
 ├── tools/
 │   ├── perfdrive.py     launches the app, runs a scenario, writes results JSON
 │   ├── compare.py       baseline comparison, thresholds, junit output   (not written)
