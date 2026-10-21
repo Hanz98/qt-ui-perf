@@ -30,3 +30,8 @@ EXE="$BUILD/SampleApp"
 
 python3 tools/perfdrive.py --app "$EXE" --scenario scenarios/sample_app.json \
     --lane headless --repeats "$REPEATS" --out "$OUT"
+
+# The gate, end to end: a result compared with itself must pass (exit 0) and must produce
+# the JUnit/Markdown files the pipeline publishes.
+python3 tools/compare.py "$OUT" --baseline "$OUT" --scenario scenarios/sample_app.json \
+    --junit "${OUT%.json}-junit.xml" --markdown "${OUT%.json}.md"

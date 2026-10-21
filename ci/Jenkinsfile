@@ -1,5 +1,6 @@
 // Sketch of the pipeline shape described in README.md §4 step 7. Not runnable yet:
-// the app checkout/build step and tools/*.py are placeholders.
+// the app checkout/build step and tools/preflight.py are placeholders. tools/perfdrive.py
+// and tools/compare.py are real; the baseline flow is described in docs/compare.md.
 pipeline {
     agent none
     options {
@@ -27,8 +28,10 @@ pipeline {
                 stages {
                     stage('fetch app') {
                         steps {
-                            // copyArtifacts from the app's own build job, or build it here
+                            // copyArtifacts from the app's own build job, or build it here; the
+                            // executable (built with the perfdriver seam) ends up in APP_EXE.
                             echo "fetch app build for ${OS}"
+                            script { env.APP_EXE = isUnix() ? 'app/build/App' : 'app\\build\\App.exe' }
                         }
                     }
                     stage('preflight') {
@@ -44,10 +47,13 @@ pipeline {
                     stage('measure') {
                         steps {
                             script {
-                                def cmd = "tools/perfdrive.py --lane ${LANE} --scenarios ${params.SCENARIOS} " +
-                                          "--repeats ${params.REPEATS} --out results/${OS}-${LANE}.json"
-                                if (isUnix()) sh "python3 ${cmd}"
-                                else          bat "py -3 ${cmd.replace('/', '\\\\')}"
+                                // One result file per OS x lane x scenario.
+                                for (name in params.SCENARIOS.split(',')) {
+                                    def cmd = "tools/perfdrive.py --app ${APP_EXE} --scenario scenarios/${name}.json " +
+                                              "--lane ${LANE} --repeats ${params.REPEATS} --out results/${OS}-${LANE}-${name}.json"
+                                    if (isUnix()) sh "python3 ${cmd}"
+                                    else          bat "py -3 ${cmd.replace('/', '\\\\')}"
+                                }
                             }
                         }
                         post {
@@ -56,18 +62,33 @@ pipeline {
                     }
                     stage('compare') {
                         steps {
+                            // The baseline store is the one this job archived last time (docs/compare.md).
+                            // A missing store (first run, new scenario) is reported, not fatal.
+                            copyArtifacts projectName: env.JOB_NAME, selector: lastSuccessful(),
+                                          filter: 'baselines/*.json', optional: true
                             script {
-                                // Baseline = last stored result for main × OS × LANE.
-                                // Exit code 0 ok, 1 unstable (>10 %), 2 fail (>25 %); writes junit XML.
-                                def cmd = "tools/compare.py results/${OS}-${LANE}.json " +
-                                          "--baseline baselines/${OS}-${LANE}.json " +
-                                          "--junit results/${OS}-${LANE}-junit.xml"
-                                def rc = isUnix() ? sh(returnStatus: true, script: "python3 ${cmd}")
-                                                  : bat(returnStatus: true, script: "py -3 ${cmd.replace('/', '\\\\')}")
-                                if (rc == 1) unstable("perf regression > 10 % on ${OS}/${LANE}")
-                                if (rc >= 2) error("perf regression > 25 % on ${OS}/${LANE}")
+                                // Exit code 0 ok, 1 unstable, 2 fail, 3 usage/input error (e.g. no baseline yet).
+                                def worst = 0
+                                for (name in params.SCENARIOS.split(',')) {
+                                    def stem = "${OS}-${LANE}-${name}"
+                                    def cmd = "tools/compare.py results/${stem}.json " +
+                                              "--baseline baselines/${stem}.json --scenario scenarios/${name}.json " +
+                                              "--junit results/${stem}-junit.xml --markdown results/${stem}.md " +
+                                              "--json results/${stem}-verdict.json"
+                                    def rc = isUnix() ? sh(returnStatus: true, script: "python3 ${cmd}")
+                                                      : bat(returnStatus: true, script: "py -3 ${cmd.replace('/', '\\\\')}")
+                                    if (rc == 3) echo "no usable baseline for ${stem} yet; store one from main"
+                                    else worst = Math.max(worst, rc)
+                                }
+                                if (worst == 1) unstable("perf regression over the unstable threshold on ${OS}/${LANE}")
+                                if (worst >= 2) error("perf regression over the fail threshold on ${OS}/${LANE}")
                             }
-                            junit 'results/*-junit.xml'
+                        }
+                        post {
+                            always {
+                                junit allowEmptyResults: true, testResults: 'results/*-junit.xml'
+                                archiveArtifacts artifacts: 'results/*.md, results/*-verdict.json', allowEmptyArchive: true
+                            }
                         }
                     }
                     stage('baseline') {
@@ -78,9 +99,18 @@ pipeline {
                             }
                         }
                         steps {
-                            // Promote: copy results to the baseline store (artifact of this job,
-                            // a shared drive, or an object store). Keep history for trend charts.
-                            echo "store baselines/${OS}-${LANE}.json"
+                            // Append this green run to the store (last 20 runs kept) and archive it, so the
+                            // next build's copyArtifacts picks it up. Trend charts can read the same file.
+                            script {
+                                for (name in params.SCENARIOS.split(',')) {
+                                    def stem = "${OS}-${LANE}-${name}"
+                                    def cmd = "tools/compare.py results/${stem}.json " +
+                                              "--update-baseline baselines/${stem}.json --keep 20 --ref ${env.GIT_COMMIT}"
+                                    if (isUnix()) sh "python3 ${cmd}"
+                                    else          bat "py -3 ${cmd.replace('/', '\\\\')}"
+                                }
+                            }
+                            archiveArtifacts artifacts: 'baselines/*.json', fingerprint: true
                         }
                     }
                 }
