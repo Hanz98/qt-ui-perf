@@ -8,7 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENARIOS = sorted(glob.glob(os.path.join(ROOT, "scenarios", "*.json")))
 
 KNOWN_OPS = {"launch", "wait_first_frame", "wait_idle", "click", "key", "wheel", "get",
-             "mark", "stats", "quit"}
+             "mark", "stats", "tree", "quit"}
 NEEDS_OBJECT = {"click", "key", "wheel", "get"}
 
 

@@ -44,7 +44,8 @@ keeps the real history), and tag.
    `tests/fake_app.py` (speaks the perfdriver protocol, no Qt); `tests/test_scenarios.py`
    checks that every `scenarios/*.json` is playable. Plus `pyflakes`.
 2. **smoke / linux / Qt 5 and Qt 6** — builds `sample-app/` with the seam and plays
-   `scenarios/sample_app.json` in the headless lane (`tests/smoke.sh`).
+   `scenarios/sample_app.json` in the headless lane (`tests/smoke.sh`); with Qt Quick
+   installed it also builds `sample-app-quick/` and plays `scenarios/sample_app_quick.json`.
 3. **smoke / windows / Qt 6** — the same on a Windows runner.
 
 These prove the tooling works; they do not measure performance. GitHub runners are shared
@@ -55,7 +56,10 @@ dedicated Jenkins agents described in `docs/agents.md`.
 ## Conventions
 
 - Python: standard library only in `tools/` (it runs on bare Jenkins agents). 3.8+.
-- C++: C++17, Qt 5.15 and Qt 6 both supported, no extra Qt modules in the seam.
-- Changes the sample app needs for testability go into `sample-app/testing-changes.diff`
-  as well, so the diff stays a complete recipe for instrumenting a real app.
+- C++: C++17, Qt 5.15 and Qt 6 both supported, no extra Qt modules in the seam beyond
+  Widgets; Qt Quick support stays optional (`PERFDRIVER_QUICK`, `#ifdef PERFDRIVER_HAVE_QUICK`)
+  so Widgets-only applications build without it.
+- Changes the sample apps need for testability go into `sample-app/testing-changes.diff`
+  and `sample-app-quick/testing-changes.diff` as well, so each diff stays a complete recipe
+  for instrumenting a real app.
 - Commit messages: imperative subject line, a body explaining *why* when it is not obvious.

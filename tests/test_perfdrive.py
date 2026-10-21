@@ -86,6 +86,26 @@ class RunOnceTest(unittest.TestCase):
         self.assertEqual(metrics["count_click_to_paint_ms"], 0.5)
         self.assertEqual(metrics["jank.over_50ms"], 0)
 
+    def test_quick_frames_are_recorded_per_window(self):
+        scenario = {"steps": [{"op": "launch"}, {"op": "click", "object": "countButton"},
+                              {"op": "stats", "mark": "jank"}]}
+        metrics = perfdrive.run_once(FAKE_APP, scenario, env_for(FAKE_APP_FRAMES="1"))
+        self.assertEqual(metrics["frames.mainWindow.count"], 1)
+        self.assertEqual(metrics["frames.mainWindow.fps"], 60.0)
+        self.assertEqual(metrics["frames.mainWindow.interval_p95"], 17.0)
+        # a Widgets-only build reports no windows and no frame metrics appear
+        metrics = perfdrive.run_once(FAKE_APP, scenario, env_for())
+        self.assertFalse([m for m in metrics if m.startswith("frames.")])
+
+    def test_tree_step_is_playable(self):
+        scenario = {"steps": [{"op": "launch"}, {"op": "tree", "depth": 2}, {"op": "quit"}]}
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            perfdrive.run_once(FAKE_APP, scenario, env_for())
+        self.assertIn('QSlider "levelSlider"', err.getvalue())
+
     def test_expect_mismatch_fails_the_run(self):
         scenario = {"steps": [
             {"op": "launch"},
@@ -149,6 +169,30 @@ class MainTest(unittest.TestCase):
         self.assertEqual(result["lane"], "headless")
         self.assertEqual(result["repeats"], 2)
         self.assertEqual(len(result["metrics"]["count_click_to_paint_ms"]["values"]), 2)
+
+    def test_tree_flag_prints_the_object_tree(self):
+        import contextlib
+        import io
+        out = io.StringIO()
+        old = sys.argv
+        sys.argv = ["perfdrive", "--app", FAKE_APP, "--tree"]
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(perfdrive.main(), 0)
+        finally:
+            sys.argv = old
+        self.assertIn('MainWindow "mainWindow"', out.getvalue())
+        self.assertIn("text='Clicks: 0'", out.getvalue())
+
+
+class FormatTreeTest(unittest.TestCase):
+    def test_indents_by_depth_and_marks_hidden(self):
+        text = perfdrive.format_tree([
+            {"depth": 0, "class": "QQuickWindow", "name": "mainWindow", "visible": True, "geometry": [0, 0, 4, 3]},
+            {"depth": 1, "class": "QQuickButton", "name": "", "text": "Count", "visible": False},
+        ])
+        self.assertEqual(text.splitlines(), ['QQuickWindow "mainWindow" [0,0,4,3]',
+                                             "  QQuickButton text='Count' (hidden)"])
 
 
 if __name__ == "__main__":

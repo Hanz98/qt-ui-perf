@@ -8,6 +8,7 @@ just enough for scenarios/sample_app.json: a slider, two buttons and the labels.
 Environment knobs for the tests:
   FAKE_APP_NO_READY=1   never send the ready event
   FAKE_APP_EXIT_CODE=n  exit with this code after quit
+  FAKE_APP_FRAMES=1     report a Qt Quick window in 'stats' (frames), like a Quick build
 """
 import json
 import os
@@ -111,7 +112,21 @@ def handle(state, cmd):
         out.update(dispatch_ms=0.1, accepted=True, painted=True, paint_ms=0.3)
     elif op == "stats":
         out.update(jank={"count": 10, "p50": 0.2, "p95": 1.0, "max": 2.0, "over_50ms": 0},
-                   paint_count=state.paints, first_paint_ms=1.0)
+                   paint_count=state.paints, first_paint_ms=1.0, frames=[])
+        if os.environ.get("FAKE_APP_FRAMES"):
+            out["frames"] = [{"window": "mainWindow", "class": "QQuickWindow", "source": "frameSwapped",
+                              "count": state.paints, "first_frame_ms": 1.0, "fps": 60.0,
+                              "interval_p50": 16.6, "interval_p95": 17.0, "interval_max": 20.0}]
+    elif op == "tree":
+        nodes = [{"depth": 0, "class": "MainWindow", "name": "mainWindow", "visible": True,
+                  "geometry": [0, 0, 420, 320]}]
+        for name, cls in state.objects().items():
+            if name != "mainWindow":
+                node = {"depth": 1, "class": cls, "name": name, "visible": True, "geometry": [0, 0, 100, 20]}
+                if name in state.labels():
+                    node["text"] = state.labels()[name]
+                nodes.append(node)
+        out.update(count=len(nodes), truncated=False, nodes=nodes[:1 + 20 * int(cmd.get("depth", 8) > 0)])
     elif op == "quit":
         reply(out)
         return None

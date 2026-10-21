@@ -8,20 +8,21 @@ on CI agents that sit at a locked screen or have no desktop at all. MIT licensed
 | Piece | State |
 |---|---|
 | `harness/perfdriver/` — the in-process automation seam (C++, Qt Widgets, Qt 5.15 / Qt 6) | working |
-| `tools/perfdrive.py` — launches the app, plays a scenario, writes results JSON | working, headless + display lanes |
+| `tools/perfdrive.py` — launches the app, plays a scenario, writes results JSON; `--tree` dumps the object tree | working, headless + display lanes |
 | `sample-app/` — small Qt Widgets app instrumented with the seam (`testing-changes.diff` shows exactly what was added) | working |
 | `scenarios/sample_app.json` — startup, click-to-paint, key/wheel latency, jank, RSS | working |
 | `tests/` + GitHub Actions — driver tests without Qt, build-and-play smoke on Linux Qt 5/6 and Windows Qt 6 | working |
 | `tools/compare.py` (baseline + thresholds → junit), `tools/preflight.py` | not written |
-| Qt Quick support in the seam | not started |
+| Qt Quick support in the seam — item-tree addressing, synthetic input to `QQuickWindow`, `frameSwapped` paint detection, per-window frame stats; optional (`PERFDRIVER_QUICK`), `sample-app-quick/` + `scenarios/sample_app_quick.json` | working, headless lane verified on Qt 6; display-lane fps untested |
 | `ci/Jenkinsfile` | sketch, see §4 step 7 |
 | Display-lane agent setup scripts | not written; facts in `docs/agents.md` |
 
 ## Quick start
 
 ```sh
-# needs cmake, a C++17 compiler, Qt 5.15+ or Qt 6 (Widgets), Python 3.8+
-tests/smoke.sh                       # builds sample-app/ and plays the scenario headless
+# needs cmake, a C++17 compiler, Qt 5.15+ or Qt 6 (Widgets; Quick + Controls optional), Python 3.8+
+tests/smoke.sh                       # builds sample-app/ (and sample-app-quick/ if Qt Quick
+                                     # is installed) and plays the scenarios headless
 python3 -m unittest discover -s tests   # driver and scenario tests, no Qt required
 
 # the same by hand
@@ -29,12 +30,19 @@ cmake -S sample-app -B sample-app/build -DSAMPLEAPP_PERF_DRIVER=ON
 cmake --build sample-app/build
 python3 tools/perfdrive.py --app sample-app/build/SampleApp \
     --scenario scenarios/sample_app.json --lane headless --repeats 5 --out results/local.json
+
+# the Qt Quick twin, and how to discover addresses in an app with few objectNames
+cmake -S sample-app-quick -B sample-app-quick/build && cmake --build sample-app-quick/build
+python3 tools/perfdrive.py --app sample-app-quick/build/SampleAppQuick --tree
+python3 tools/perfdrive.py --app sample-app-quick/build/SampleAppQuick \
+    --scenario scenarios/sample_app_quick.json --lane headless --repeats 5
 ```
 
 Instrumenting your own application takes two calls in `main()` and `objectName`s on the
-widgets you want to drive — see [`harness/README.md`](harness/README.md) and
-[`sample-app/testing-changes.diff`](sample-app/testing-changes.diff). How to contribute,
-branch model and what CI checks: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+widgets or QML items you want to drive — see [`harness/README.md`](harness/README.md),
+[`sample-app/testing-changes.diff`](sample-app/testing-changes.diff) (Widgets) and
+[`sample-app-quick/testing-changes.diff`](sample-app-quick/testing-changes.diff) (Qt Quick).
+How to contribute, branch model and what CI checks: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 The rest of this file is the plan the work follows, the decisions it rests on, and the
 questions that still need answers from the stakeholders.

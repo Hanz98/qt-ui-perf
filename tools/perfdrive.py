@@ -204,6 +204,15 @@ def run_once(exe, scenario, env):
                 record(prefix + ".p95", r["jank"]["p95"])
                 record(prefix + ".max", r["jank"]["max"])
                 record(prefix + ".over_50ms", r["jank"]["over_50ms"])
+                # Qt Quick windows: frame count, pacing and fps since the last reset
+                # (frameSwapped timestamps). Empty for Widgets-only applications.
+                for window in r.get("frames", []):
+                    name = "frames." + (window.get("window") or "window")
+                    for field in ("count", "fps", "interval_p50", "interval_p95", "interval_max"):
+                        record(name + "." + field, window.get(field))
+            elif op == "tree":
+                r = app.call("tree", depth=int(step.get("depth", 8)), **({"window": step["window"]} if "window" in step else {}))
+                print(format_tree(r["nodes"]), file=sys.stderr)
             elif op == "quit":
                 code = app.close()
                 app = None
@@ -215,6 +224,39 @@ def run_once(exe, scenario, env):
         if app is not None:
             app.close()
     return metrics
+
+
+def format_tree(nodes):
+    """Renders a 'tree' reply (flat, depth-annotated nodes) as an indented listing."""
+    lines = []
+    for node in nodes:
+        line = "  " * node.get("depth", 0) + node.get("class", "?")
+        if node.get("name"):
+            line += ' "%s"' % node["name"]
+        if node.get("text"):
+            line += " text=%r" % node["text"]
+        if node.get("geometry"):
+            line += " [%s]" % ",".join(str(v) for v in node["geometry"])
+        if node.get("visible") is False:
+            line += " (hidden)"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def dump_tree(exe, scenario, env, depth):
+    """Starts the app, waits for its first frame and prints the object tree: how to find
+    the addresses for a scenario in an application that sets few objectNames."""
+    app = App(exe, scenario.get("app_args", []), env)
+    try:
+        app.wait_ready()
+        app.call("wait_first_frame", timeout=30)
+        app.call("wait_idle", ms=300)
+        r = app.call("tree", depth=depth)
+        print(format_tree(r["nodes"]))
+        if r.get("truncated"):
+            print("... (truncated; use --tree-depth or the 'window' field to narrow down)")
+    finally:
+        app.close()
 
 
 def aggregate(runs):
@@ -239,18 +281,33 @@ def aggregate(runs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--app", required=True, help="application executable built with the perf driver")
-    ap.add_argument("--scenario", required=True, help="scenario JSON file")
+    ap.add_argument("--scenario", help="scenario JSON file (required unless --tree)")
     ap.add_argument("--lane", choices=sorted(LANE_ENV), default="headless")
     ap.add_argument("--repeats", type=int, default=5, help="measured runs after the warm-up run")
     ap.add_argument("--no-warmup", action="store_true")
     ap.add_argument("--out", help="write results JSON here")
+    ap.add_argument("--tree", action="store_true",
+                    help="start the app, print its object tree (widgets and Qt Quick items) and exit")
+    ap.add_argument("--tree-depth", type=int, default=8, metavar="N")
     args = ap.parse_args()
 
-    with open(args.scenario) as f:
-        scenario = json.load(f)
+    if not args.scenario and not args.tree:
+        ap.error("--scenario is required (or --tree)")
+    scenario = {}
+    if args.scenario:
+        with open(args.scenario) as f:
+            scenario = json.load(f)
     env = dict(os.environ)
     env.update(LANE_ENV[args.lane])
     env.update(scenario.get("env", {}))
+
+    if args.tree:
+        try:
+            dump_tree(args.app, scenario, env, args.tree_depth)
+        except ProtocolError as e:
+            print("perfdrive: %s" % e, file=sys.stderr)
+            return 3
+        return 0
 
     runs = []
     total = args.repeats + (0 if args.no_warmup else 1)
