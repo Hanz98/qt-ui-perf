@@ -52,6 +52,11 @@ machines and the numbers in the uploaded `results/*.json` artifacts are only goo
 spotting that something broke by an order of magnitude. Real measurements belong on the
 dedicated Jenkins agents described in `docs/agents.md`.
 
+## Decisions
+
+Why the framework is shaped the way it is: [`docs/adrs/`](docs/adrs/README.md). Add a record
+when a choice is hard to reverse, would surprise a reader of the code, and had real alternatives.
+
 ## Conventions
 
 - Python: standard library only in `tools/` (it runs on bare Jenkins agents). 3.8+.
